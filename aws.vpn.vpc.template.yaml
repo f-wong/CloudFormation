@@ -1,0 +1,307 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  VPC with 2 public subnets and 2 private subnets plus 2 NAT gateways in 2 AZ's
+Parameters:
+  parCIDRSecondOctet:
+    Description: >-
+      Specifies the IP CIDR Block's second octet
+    Type: Number
+    MinValue: '0'
+    MaxValue: '255'
+    Default: '255'
+    ConstraintDescription: Must be between 0 and 255.
+  parPrefixKeyword:
+    Description: 'Short prefix keyword to differentiate the stack'
+    Type: String
+    Default: awsvpn
+  parManagementIP:
+    Description: 'Management IP Address in CIDR notation'
+    Type: String
+    Default: 10.10.10.10/30
+
+Mappings:
+  mapVPCSubnetConfig:
+    PublicCIDR:
+      a: '0'
+      b: '8'
+    PrivateCIDR:
+      a: '16'
+      b: '32'
+
+Resources:
+  resVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Sub '10.${parCIDRSecondOctet}.0.0/16'
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc'
+  resSubnetPublicA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'resVPC'
+      CidrBlock: !Join ['.', ['10', !Ref 'parCIDRSecondOctet', !FindInMap [mapVPCSubnetConfig, PublicCIDR, a], '0/21']]
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-pub-a'
+        - Key: Purpose
+          Value: Public Subnet in first AZ (note that it doesn't necessarily resolve to AZ-a i.e. us-west-1a)
+  resSubnetPublicB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'resVPC'
+      CidrBlock: !Join ['.', ['10', !Ref 'parCIDRSecondOctet', !FindInMap [mapVPCSubnetConfig, PublicCIDR, b], '0/21']]
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-pub-b'
+        - Key: Purpose
+          Value: Public Subnet in second AZ (note that it doesn't necessarily resolve to AZ-b i.e. us-west-1b)
+  resSubnetPrivateA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'resVPC'
+      CidrBlock: !Join ['.', ['10', !Ref 'parCIDRSecondOctet', !FindInMap [mapVPCSubnetConfig, PrivateCIDR, a], '0/21']]
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-prv-a'
+        - Key: Purpose
+          Value: Private Subnet in first AZ (note that it doesn't necessarily resolve to AZ-a i.e. us-west-1a)
+  resSubnetPrivateB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'resVPC'
+      CidrBlock: !Join ['.', ['10', !Ref 'parCIDRSecondOctet', !FindInMap [mapVPCSubnetConfig, PrivateCIDR, b], '0/21']]
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-prv-b'
+        - Key: Purpose
+          Value: Private Subnet in second AZ (note that it doesn't necessarily resolve to AZ-b i.e. us-west-1b)
+  resInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-igw'
+  resAttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref 'resVPC'
+      InternetGatewayId: !Ref 'resInternetGateway'
+  resNatGatewayA:
+    Type: AWS::EC2::NatGateway
+    DependsOn:
+      - resAttachInternetGateway
+      - resRouteTableAssociationPublicA
+    Properties:
+      AllocationId: !GetAtt 'resNatEipA.AllocationId'
+      SubnetId: !Ref 'resSubnetPublicA'
+  resNatGatewayB:
+    Type: AWS::EC2::NatGateway
+    DependsOn:
+      - resAttachInternetGateway
+      - resRouteTableAssociationPublicB
+    Properties:
+      AllocationId: !GetAtt 'resNatEipB.AllocationId'
+      SubnetId: !Ref 'resSubnetPublicB'
+  resNatEipA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-EIP-AZ-A'
+        - Key: Purpose
+          Value: AWS VPN EIP on AZ-A to be whitelisted
+  resNatEipB:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-EIP-AZ-B'
+        - Key: Purpose
+          Value: AWS VPN EIP on AZ-B to be whitelisted
+  resRouteTablePublic:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'resVPC'
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-rtb-pub'
+  resRouteTablePrivateA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'resVPC'
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-rtb-prv-a'
+  resRouteTablePrivateB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'resVPC'
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-rtb-prv-b'
+  resRoutePublic2Internet:
+    Type: AWS::EC2::Route
+    DependsOn: resAttachInternetGateway
+    Properties:
+      RouteTableId: !Ref 'resRouteTablePublic'
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref 'resInternetGateway'
+  resRoutePrivate2NatA:
+    Type: AWS::EC2::Route
+    DependsOn: resNatGatewayA
+    Properties:
+      RouteTableId: !Ref 'resRouteTablePrivateA'
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref 'resNatGatewayA'
+  resRoutePrivate2NatB:
+    Type: AWS::EC2::Route
+    DependsOn: resNatGatewayB
+    Properties:
+      RouteTableId: !Ref 'resRouteTablePrivateB'
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref 'resNatGatewayB'
+  resRouteTableAssociationPublicA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'resSubnetPublicA'
+      RouteTableId: !Ref 'resRouteTablePublic'
+  resRouteTableAssociationPublicB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'resSubnetPublicB'
+      RouteTableId: !Ref 'resRouteTablePublic'
+  resRouteTableAssociationPrivateA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'resSubnetPrivateA'
+      RouteTableId: !Ref 'resRouteTablePrivateA'
+  resRouteTableAssociationPrivateB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'resSubnetPrivateB'
+      RouteTableId: !Ref 'resRouteTablePrivateB'
+  resVPNSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable Inbound Management Ports
+      VpcId: !Ref 'resVPC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: !Ref parManagementIP
+      SecurityGroupEgress:
+        - CidrIp: 127.0.0.1/32
+          IpProtocol: '-1'
+      Tags:
+        - Key: Name
+          Value: AWSVPN_SecurityGroup
+  resVPCDefaultSGEgressDNSTcp:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+      IpProtocol: tcp
+      FromPort: '53'
+      ToPort: '53'
+      CidrIp: 0.0.0.0/0
+  resVPCDefaultSGEgressDNSUdp:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+      IpProtocol: udp
+      FromPort: '53'
+      ToPort: '53'
+      CidrIp: 0.0.0.0/0
+  resVPCDefaultSGEgressHTTP:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+      IpProtocol: tcp
+      FromPort: '80'
+      ToPort: '80'
+      CidrIp: 0.0.0.0/0
+  resVPCDefaultSGEgressHTTPS:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+      IpProtocol: tcp
+      FromPort: '443'
+      ToPort: '443'
+      CidrIp: 0.0.0.0/0
+  resVPCDefaultSGEgressNTP:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+      IpProtocol: udp
+      FromPort: '123'
+      ToPort: '123'
+      CidrIp: 0.0.0.0/0
+  resVPCDefaultSGEgressToSelf:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+      IpProtocol: '-1'
+      DestinationSecurityGroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+
+Outputs:
+  outVPCName:
+    Description: Name of the VPC Created
+    Value: !Sub '${parPrefixKeyword}-vpc'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-name'
+  outVPCId:
+    Description: ID of the VPC Created
+    Value: !Ref 'resVPC'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-id'
+  outVPCCIDR:
+    Description: CIDR Block for the new VPC
+    Value: !GetAtt 'resVPC.CidrBlock'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-cidr'
+  outSubnetPublicA:
+    Description: ID of Public Subnet A
+    Value: !Ref 'resSubnetPublicA'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-sub-pub-a'
+  outSubnetPublicB:
+    Description: ID of Public Subnet B
+    Value: !Ref 'resSubnetPublicB'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-sub-pub-b'
+  outSubnetPrivateA:
+    Description: ID of Private Subnet A
+    Value: !Ref 'resSubnetPrivateA'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-sub-prv-a'
+  outSubnetPrivateB:
+    Description: ID of Private Subnet B
+    Value: !Ref 'resSubnetPrivateB'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-sub-prv-b'
+  outManagementVPCSG:
+    Description: ID of the Management Security Group Created
+    Value: !Ref 'resVPNSecurityGroup'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-vpn-sg'
+  outDefaultVPCSG:
+    Description: ID of the Default VPC Security Group Created
+    Value: !GetAtt 'resVPC.DefaultSecurityGroup'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-default-sg'
+  outNatGatewayAIp:
+    Description: "Public IP address of the NAT gateway AZ-A"
+    Value: !Ref resNatEipA
+  outNatGatewayAIp:
+    Description: "Public IP address of the NAT gateway AZ-B"
+    Value: !Ref resNatEipB
