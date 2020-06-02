@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Dynamo Table with AutoScaling Target
+
+Parameters:
+  parTableName:
+    Description: DynamoDB Table Name
+    Type: String
+  parEncryptionKey:
+    Description: SSM parameter referencing the KMS Encryption Key
+    Type: AWS::SSM::Parameter::Value<String>
+
+Resources:
+  resDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${parTableName}'
+      AttributeDefinitions:
+        - AttributeName: 'partkey'
+          AttributeType: 'S'
+        - AttributeName: 'sortkey'
+          AttributeType: 'S'
+        - AttributeName: 'data'
+          AttributeType: 'S'
+      KeySchema:
+        - AttributeName: 'partkey'
+          KeyType: HASH
+        - AttributeName: 'sortkey'
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: '5'
+        WriteCapacityUnits: '5'
+      GlobalSecondaryIndexes:
+        -
+          IndexName: "GSI1"
+          KeySchema: 
+            - 
+              AttributeName: 'sortkey'
+              KeyType: HASH
+            - 
+              AttributeName: 'data'
+              KeyType: RANGE
+          Projection: 
+            NonKeyAttributes: 
+              - 'message'
+            ProjectionType: 'INCLUDE'
+          ProvisionedThroughput: 
+            ReadCapacityUnits: '5'
+            WriteCapacityUnits: '5'
+      SSESpecification:
+        KMSMasterKeyId: !Ref parEncryptionKey
+        SSEEnabled: true
+        SSEType: KMS
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  resDynamoTableParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/infra/dynamodb/${parTableName}/stream/arn"
+      Description: "DynamoDB Stream"
+      Type: String
+      Value: !GetAtt resDynamoTable.StreamArn
+
+  resUserTableWriteCapacityScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: resDynamoTable
+    Properties: 
+      MaxCapacity: 100
+      MinCapacity: 5
+      ResourceId: !Sub 'table/${resDynamoTable}'
+      RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable
+      ServiceNamespace: dynamodb
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+
+  resUserTableWriteScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: WriteAutoScalingPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref resUserTableWriteCapacityScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
