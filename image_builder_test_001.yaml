@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  v1.0 ImaBuilder Template
+Parameters:
+  parInitialSourceImage:
+    Description: Initial Source AMI Image
+    Type: String
+    #Ubuntu us-west-2
+    Default: ami-00d55bbcb217eb566
+  parS3Bucket:
+    Description: S3 bucket for components and logs
+    Type: String
+    Default: icumedical-devops-image-builder
+  parKMSKeyId:
+    Description: KMS Key ID for Encrypting Volumes
+    Type: String
+    Default: icu-devops-net-encryption-key
+  parEC2KeyPair:
+    Description: EC2 Key Pair for Troubleshooting Image Builds
+    Type: String
+    Default: icumedical-devops-20180313
+  parSubnetId:
+    Description: VPC Subnet ID
+    Type: String
+    Default: subnet-05ded6bf881b5eee5
+  parSecurityGroupId:
+    Description: VPC Security Group ID
+    Type: String
+    Default: sg-09dd4d66c0914bdfe
+
+  parComponent1Par1:
+    Description: Component1 Parameter 1
+    Type: String
+    Default: 'sample value for par1'
+  parComponent1Par2:
+    Description: Component1 Parameter 2
+    Type: String
+    Default: 'sample value for par2'
+
+Resources:
+  #Creates an Image Version
+  resImageBuilderImage:
+    Type: AWS::ImageBuilder::Image
+    Properties:
+      #ContainerRecipeArn: String
+      DistributionConfigurationArn: String
+      EnhancedImageMetadataEnabled: Boolean
+      ImageRecipeArn: String
+      ImageTestsConfiguration:
+        ImageTestsEnabled: false
+        TimeoutMinutes: 60
+      InfrastructureConfigurationArn: String
+      Tags:
+        - Key: Name
+          Value: "Image Builder Version"
+
+  #Defines a recipe to create an image at a high-level
+  resImageBuilderRecipe:
+    Type: AWS::ImageBuilder::ImageRecipe
+    Properties:
+      #AdditionalInstanceConfiguration: 
+      #  AdditionalInstanceConfiguration
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: false
+            #Iops: Integer
+            #KmsKeyId: !Ref parKMSKeyId
+            #SnapshotId: String
+            VolumeSize: 25
+            VolumeType: gp2
+          #NoDevice: String
+          #VirtualName: String
+      Components:
+        - ComponentArn: !Ref resImageBuilderComponent1
+          Parameters:
+            - Name: parComponent1Par1
+              Value:
+                - !Ref parComponent1Par1
+            - Name: parComponent1Par2
+              Value:
+                - !Ref parComponent1Par2
+      Description: Recipe for Building Ubuntu Image for LifeShield
+      Name: LifeShield_Ubuntu_Image_Build_Recipe_Updated_20210803_1641
+      ParentImage: !Ref parInitialSourceImage
+      Version: 1.0.0
+      WorkingDirectory: /tmp
+      Tags:
+        - Key: Name
+          Value: "Ubuntu Image Builder Recipe"
+
+  #Defines 1 component of an image recipe
+  resImageBuilderComponent1:
+    Type: AWS::ImageBuilder::Component
+    Properties:
+      ChangeDescription: Component1 Initial Version
+      Description: ImageBuilderComponent1
+      KmsKeyId: !Ref parKMSKeyId
+      Name: Component1
+      Platform: Linux
+      SupportedOsVersions:
+        - 'Ubuntu 18'
+      #Data: String
+      Uri: !Sub 's3://${parS3Bucket}/component_document1.yaml'
+      Version: 1.0.0
+      Tags:
+        - Key: Name
+          Value: "Ubuntu Image Builder Component1"
+
+  #Defines the infrastructure configuration where Image Builder runs to build and test images
+  resImageBuilderInfrastructure:
+    Type: AWS::ImageBuilder::InfrastructureConfiguration
+    Properties:
+      Description: Infrastructure Specification for Building Images
+      InstanceProfileName: T3-Builder-Profile
+      InstanceTypes:
+        - 't3.small'
+        - 't3.medium'
+      KeyPair: !Ref parEC2KeyPair
+      Logging:
+        S3Logs:
+          S3BucketName: !Ref parS3Bucket
+          S3KeyPrefix: 'builder-logs'
+      Name: ImageBuilderInfraConfig
+      #ResourceTags:
+      #  Key : Value
+      SecurityGroupIds:
+        - !Ref parSecurityGroupId
+      #SnsTopicArn: String
+      SubnetId: !Ref parSubnetId
+      TerminateInstanceOnFailure: false
+      Tags:
+        - Key: Name
+          Value: "Ubuntu Image Builder Infrastructure Configuration"
+
+  #Defines the details of where an image is to be deployed
+  resImageBuilderDistribution:
+    Type: AWS::ImageBuilder::DistributionConfiguration
+    Properties:
+      Description: Ubuntu Image Builder Distribution Configuration
+      Distributions:
+        - Region: 'us-west-2'
+          AmiDistributionConfiguration:
+            Name: 'icumed-ami-ubuntu-1804-us-west-2-v1-{{ imagebuilder:buildDate }}'
+            Description: 'Description for Test AMI Image'
+            AmiTags:
+              Name: 'Test AMI Image'
+        - Region: 'us-east-1'
+          AmiDistributionConfiguration:
+            Name: 'icumed-ami-ubuntu-1804-us-east-1-v1-{{ imagebuilder:buildDate }}'
+            Description: 'Description for Test AMI Image'
+            AmiTags:
+              Name: 'Test AMI Image'
+      Name: ImageBuilderDistribution
+      Tags:
+        - Key: Name
+          Value: "Ubuntu Image Builder Distribution Configuration"
+
+  resImageBuilderPipeline:
+    Type: AWS::ImageBuilder::ImagePipeline
+    Properties: 
+      Description: Ubuntu Image Builder Pipeline
+      DistributionConfigurationArn: !Ref resImageBuilderDistribution
+      EnhancedImageMetadataEnabled: true
+      ImageRecipeArn: !Ref resImageBuilderRecipe
+      ImageTestsConfiguration:
+        ImageTestsEnabled: false
+        TimeoutMinutes: 60
+      InfrastructureConfigurationArn: !Ref resImageBuilderInfrastructure
+      Name: ImageBuilderPipeline
+      # Schedule:
+        # Schedule
+      Status: 'ENABLED'
+      Tags:
+        - Key: Name
+          Value: "Ubuntu Image Builder Pipeline"

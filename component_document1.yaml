@@ -1,0 +1,53 @@
+name: HelloWorldTestingLinuxDoc - InlineData
+description: This is hello world testing doc
+schemaVersion: 1.0
+
+parameters:
+  - parComponent1Par1:
+      description: Sample Parameter 1
+      type: string
+      #default: 'https://awscli.amazonaws.com/AWSCLIV2.msi'
+  - parComponent1Par2:
+      description: Sample Parameter 2
+      type: string
+      #default: 'https://awscli.amazonaws.com/AWSCLIV2.msi'
+      
+phases:
+  - name: build
+    steps:
+      - name: UpdateMyLinux
+        action: UpdateOS
+        onFailure: Abort
+        maxAttempts: 3
+        inputs:
+          exclude:
+            - ec2-hibinit-agent
+      - name: HelloWorldStep
+        action: ExecuteBash
+        timeoutSeconds: 300
+        onFailure: "Abort"
+        maxAttempts: 3
+        inputs:
+          commands:
+            - echo "Hello World! Build. {{ parComponent1Par1 }}"
+  - name: validate
+    steps:
+      - name: HelloWorldStep
+        action: ExecuteBash
+        timeoutSeconds: 300
+        onFailure: "Abort"
+        maxAttempts: 3
+        inputs:
+          commands:
+            - echo "Hello World! Validate. {{ parComponent1Par2 }}"
+  - name: test
+    steps:
+      - name: HelloWorldStep
+        action: ExecuteBash
+        timeoutSeconds: 300
+        onFailure: "Abort"
+        maxAttempts: 3
+        inputs:
+          commands:
+            - echo "Hello World! Test1. {{ parComponent1Par1 }}"
+            - echo "Hello World! Test2. {{ parComponent1Par2 }}"
