@@ -62,7 +62,7 @@ Resources:
               - sts:AssumeRole
       Path: /icumedical/sandiego/research/lifeshield/devops/
       Policies:
-        - PolicyName: AllowPolicyS3CentralizedSoup
+        - PolicyName: AllowReadAccessToCentralizedSoupS3Bucket
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -73,6 +73,22 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:s3:::${parSoupSourceBucket}'
                   - !Sub 'arn:aws:s3:::${parSoupSourceBucket}/*'
+        - PolicyName: AllowReadWriteAccessToImageBuilderS3Bucket
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListMultipartUploadParts
+                Resource:
+                  - !Sub 'arn:aws:s3:::${parS3Bucket}'
+                  - !Sub 'arn:aws:s3:::${parS3Bucket}/*'
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                  - !Sub 'arn:aws:s3:::${parS3Bucket}/builder-logs/*'
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilder
@@ -127,6 +143,8 @@ Resources:
             - Name: parComponent1Par2
               Value:
                 - !Ref parComponent1Par2
+        - ComponentArn: arn:aws:imagebuilder:us-west-2:aws:component/aws-cli-version-2-linux/x.x.x
+        - ComponentArn: arn:aws:imagebuilder:us-west-2:aws:component/amazon-corretto-11-apt-generic/x.x.x
       Description: Recipe for Building Ubuntu Image for LifeShield
       Name: LifeShield_Ubuntu_Image_Build_Recipe_Updated_20210803_1641
       ParentImage: !Ref parInitialSourceImage
