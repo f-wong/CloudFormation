@@ -2,6 +2,11 @@ name: HelloWorldTestingLinuxDoc - InlineData
 description: This is hello world testing doc
 schemaVersion: 1.0
 
+constants:
+  - conAWSCLISource:
+      type: string
+      value: 'https://awscli.amazonaws.com/AWSCLIV2.msi'
+      
 parameters:
   - parComponent1Par1:
       description: Sample Parameter 1
@@ -20,8 +25,6 @@ phases:
         onFailure: Abort
         maxAttempts: 3
         inputs:
-          exclude:
-            - ec2-hibinit-agent
       - name: HelloWorldStep
         action: ExecuteBash
         timeoutSeconds: 300

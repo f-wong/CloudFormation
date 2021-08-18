@@ -1,16 +1,25 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  v1.0 ImaBuilder Template
+  v1.0 ImageBuilder Template
 Parameters:
+  parVersion:
+    #Change this parameter in order to trigger an image update
+    Description: Semver Image Component d Recipe Versions
+    Type: String
+    Default: "1.0.0" 
   parInitialSourceImage:
     Description: Initial Source AMI Image
     Type: String
     #Ubuntu us-west-2
     Default: "ami-00d55bbcb217eb566"
   parS3Bucket:
-    Description: S3 bucket for components and logs
+    Description: S3 bucket for image builder components and logs
     Type: String
     Default: "icumedical-devops-image-builder"
+  parSoupSourceBucket:
+    Description: S3 bucket for SOUP components
+    Type: String
+    Default: "icumedical-research-soup-repository"
   parKMSKeyId:
     Description: KMS Key ID for Encrypting Volumes
     Type: String
@@ -39,7 +48,44 @@ Parameters:
     Default: "sample value for par2"
 
 Resources:
-  #Creates an Image Version
+  resImageBuilderIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /icumedical/sandiego/research/lifeshield/devops
+      Policies:
+        - PolicyName: AllowPolicyS3CentralizedSoup
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListMultipartUploadParts
+                Resource:
+                  - !Sub 'arn:aws:s3:::${parSoupSourceBucket}'
+                  - !Sub 'arn:aws:s3:::${parSoupSourceBucket}/*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilder
+        - arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilderECRContainerBuilds
+
+  resImageBuilderInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/icumedical/sandiego/research/lifeshield/devops"
+      Roles:
+        - !Ref resImageBuilderIAMRole
+
+  #Creates an Image Version. This resource actually builds the AMI image
   resImageBuilderImage:
     Type: AWS::ImageBuilder::Image
     Properties:
@@ -84,7 +130,7 @@ Resources:
       Description: Recipe for Building Ubuntu Image for LifeShield
       Name: LifeShield_Ubuntu_Image_Build_Recipe_Updated_20210803_1641
       ParentImage: !Ref parInitialSourceImage
-      Version: 1.0.0
+      Version: !Ref parVersion
       WorkingDirectory: /tmp
       Tags:
         Name: "Ubuntu Image Builder Recipe"
@@ -102,7 +148,7 @@ Resources:
         - 'Ubuntu 18'
       #Data: String
       Uri: !Sub 's3://${parS3Bucket}/component_document1.yaml'
-      Version: 1.0.0
+      Version: !Ref parVersion
       Tags:
         Name: "Ubuntu Image Builder Component1"
 
@@ -111,7 +157,7 @@ Resources:
     Type: AWS::ImageBuilder::InfrastructureConfiguration
     Properties:
       Description: Infrastructure Specification for Building Images
-      InstanceProfileName: FRANK_INSTANCE_PROFILE
+      InstanceProfileName: !Ref resImageBuilderInstanceProfile
       InstanceTypes:
         - 't3.small'
         - 't3.medium'
@@ -139,16 +185,16 @@ Resources:
       Distributions:
         - Region: 'us-west-2'
           AmiDistributionConfiguration:
-            Name: 'icumed-ami-ubuntu-1804-us-west-2-v1-{{ imagebuilder:buildDate }}'
-            Description: 'Description for Test AMI Image'
+            Name: 'icumedical/sandiego/research/devops/us-west-2/{{ imagebuilder:buildDate }}/ubuntu/ubuntu-18.04'
+            Description: 'Ubuntu 18.04 LTS'
             AmiTags:
-              Name: 'Test AMI Image'
+              Name: 'ICU Medical Ubuntu 18.04 LTS'
         - Region: 'us-east-1'
           AmiDistributionConfiguration:
-            Name: 'icumed-ami-ubuntu-1804-us-east-1-v1-{{ imagebuilder:buildDate }}'
-            Description: 'Description for Test AMI Image'
+            Name: 'icumedical/sandiego/research/devops/us-east-1/{{ imagebuilder:buildDate }}/ubuntu/ubuntu-18.04'
+            Description: 'Ubuntu 18.04 LTS'
             AmiTags:
-              Name: 'Test AMI Image'
+              Name: 'ICU Medical Ubuntu 18.04 LTS'
       Name: ImageBuilderDistribution
       Tags:
         Name: "Ubuntu Image Builder Distribution Configuration"
@@ -170,3 +216,11 @@ Resources:
       Status: 'ENABLED'
       Tags:
         Name: "Ubuntu Image Builder Pipeline"
+
+  resAMIImageBuilderSSM:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: "/icumedical/sandiego/research/devops/us-west-2/ubuntu/ubuntu-1804/amiid"
+      Description: Ubuntu AMI ID
+      Type: String
+      Value: !GetAtt resImageBuilderImage.ImageId
