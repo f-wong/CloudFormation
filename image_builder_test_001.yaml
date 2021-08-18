@@ -60,7 +60,7 @@ Resources:
                 - ec2.amazonaws.com
             Action:
               - sts:AssumeRole
-      Path: /icumedical/sandiego/research/lifeshield/devops
+      Path: /icumedical/sandiego/research/lifeshield/devops/
       Policies:
         - PolicyName: AllowPolicyS3CentralizedSoup
           PolicyDocument:
@@ -81,7 +81,7 @@ Resources:
   resImageBuilderInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      Path: "/icumedical/sandiego/research/lifeshield/devops"
+      Path: /icumedical/sandiego/research/lifeshield/devops/
       Roles:
         - !Ref resImageBuilderIAMRole
 
@@ -185,13 +185,13 @@ Resources:
       Distributions:
         - Region: 'us-west-2'
           AmiDistributionConfiguration:
-            Name: 'icumedical/sandiego/research/devops/us-west-2/{{ imagebuilder:buildDate }}/ubuntu/ubuntu-18.04'
+            Name: 'icumedical--sandiego--research--devops--us-west-2--{{ imagebuilder:buildDate }}--ubuntu--ubuntu-18.04'
             Description: 'Ubuntu 18.04 LTS'
             AmiTags:
               Name: 'ICU Medical Ubuntu 18.04 LTS'
         - Region: 'us-east-1'
           AmiDistributionConfiguration:
-            Name: 'icumedical/sandiego/research/devops/us-east-1/{{ imagebuilder:buildDate }}/ubuntu/ubuntu-18.04'
+            Name: 'icumedical--sandiego--research--devops--us-east-1--{{ imagebuilder:buildDate }}--ubuntu--ubuntu-18.04'
             Description: 'Ubuntu 18.04 LTS'
             AmiTags:
               Name: 'ICU Medical Ubuntu 18.04 LTS'
