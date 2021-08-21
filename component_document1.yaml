@@ -20,11 +20,43 @@ parameters:
 phases:
   - name: build
     steps:
-      - name: UpdateMyLinux
+      - name: UpdateUbuntuOS
         action: UpdateOS
         onFailure: Abort
         maxAttempts: 3
         inputs:
+      - name: CheckUbuntuVersion
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              FILE=/etc/os-release
+              if [ -e $FILE ]; then
+                . $FILE
+                echo $VERSION_ID
+              else
+                echo "The file $FILE does not exist. Failing build."
+                exit 1
+              fi
+      - name: CheckSystemCTLBinaryLocation
+        action: ExecuteBash
+        inputs:
+          commands:
+            - |
+              RELEASE='{{build.CheckUbuntuVersion.outputs.stdout}}'
+              case "$RELEASE" in
+                '18.04')
+                  ln -sf /bin/systemctl /usr/bin/systemctl
+                  echo 'created symlink for systemctl'
+                  ;;
+                '20.04')
+                  echo 'systemctl is in the correct location already'
+                  ;;
+                *)
+                  echo "Operating System '$RELEASE' is not supported. Failing build."
+                  exit 1
+                  ;;
+              esac
       - name: HelloWorldStep
         action: ExecuteBash
         timeoutSeconds: 300

@@ -143,10 +143,13 @@ Resources:
             - Name: parComponent1Par2
               Value:
                 - !Ref parComponent1Par2
-        - ComponentArn: arn:aws:imagebuilder:us-west-2:aws:component/aws-cli-version-2-linux/x.x.x
-        - ComponentArn: arn:aws:imagebuilder:us-west-2:aws:component/amazon-corretto-11-apt-generic/x.x.x
+        - ComponentArn: arn:aws:imagebuilder:us-west-2:aws:component/python-3-linux/1.0.2
+        - ComponentArn: arn:aws:imagebuilder:us-west-2:aws:component/aws-cli-version-2-linux/1.0.0
+        - ComponentArn: arn:aws:imagebuilder:us-west-2:aws:component/amazon-cloudwatch-agent-linux/1.0.0
+        - ComponentArn: arn:aws:imagebuilder:us-west-2:aws:component/amazon-corretto-11-apt-generic/1.0.0
+        - ComponentArn: arn:aws:imagebuilder:us-west-2:aws:component/aws-codedeploy-agent-linux/1.0.0
       Description: Recipe for Building Ubuntu Image for LifeShield
-      Name: LifeShield_Ubuntu_Image_Build_Recipe_Updated_20210803_1641
+      Name: LifeShield_Ubuntu_18_04_LTS_Base_Image
       ParentImage: !Ref parInitialSourceImage
       Version: !Ref parVersion
       WorkingDirectory: /tmp
@@ -204,15 +207,15 @@ Resources:
         - Region: 'us-west-2'
           AmiDistributionConfiguration:
             Name: 'icumedical--sandiego--research--devops--us-west-2--{{ imagebuilder:buildDate }}--ubuntu--ubuntu-18.04'
-            Description: 'Ubuntu 18.04 LTS'
+            Description: 'LifeShield Ubuntu 18.04 LTS'
             AmiTags:
-              Name: 'ICU Medical Ubuntu 18.04 LTS'
+              Name: 'icumedical/sandiego/research/devops/us-west-2/{{ imagebuilder:buildDate }}/ubuntu/ubuntu-18.04'
         - Region: 'us-east-1'
           AmiDistributionConfiguration:
             Name: 'icumedical--sandiego--research--devops--us-east-1--{{ imagebuilder:buildDate }}--ubuntu--ubuntu-18.04'
-            Description: 'Ubuntu 18.04 LTS'
+            Description: 'LifeShield Ubuntu 18.04 LTS'
             AmiTags:
-              Name: 'ICU Medical Ubuntu 18.04 LTS'
+              Name: 'icumedical/sandiego/research/devops/us-east-1/{{ imagebuilder:buildDate }}/ubuntu/ubuntu-18.04'
       Name: ImageBuilderDistribution
       Tags:
         Name: "Ubuntu Image Builder Distribution Configuration"
