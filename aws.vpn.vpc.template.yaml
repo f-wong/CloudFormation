@@ -24,9 +24,11 @@ Mappings:
     PublicCIDR:
       a: '0'
       b: '8'
+      c: '16'
     PrivateCIDR:
-      a: '16'
+      a: '24'
       b: '32'
+      c: '40'
 
 Resources:
   resVPC:
@@ -61,6 +63,17 @@ Resources:
           Value: !Sub '${parPrefixKeyword}-vpc-pub-b'
         - Key: Purpose
           Value: Public Subnet in second AZ (note that it doesn't necessarily resolve to AZ-b i.e. us-west-1b)
+  resSubnetPublicC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'resVPC'
+      CidrBlock: !Join ['.', ['10', !Ref 'parCIDRSecondOctet', !FindInMap [mapVPCSubnetConfig, PublicCIDR, c], '0/21']]
+      AvailabilityZone: !Select [2, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-pub-c'
+        - Key: Purpose
+          Value: Public Subnet in second AZ (note that it doesn't necessarily resolve to AZ-b i.e. us-west-1c)
   resSubnetPrivateA:
     Type: AWS::EC2::Subnet
     Properties:
@@ -83,6 +96,17 @@ Resources:
           Value: !Sub '${parPrefixKeyword}-vpc-prv-b'
         - Key: Purpose
           Value: Private Subnet in second AZ (note that it doesn't necessarily resolve to AZ-b i.e. us-west-1b)
+  resSubnetPrivateC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'resVPC'
+      CidrBlock: !Join ['.', ['10', !Ref 'parCIDRSecondOctet', !FindInMap [mapVPCSubnetConfig, PrivateCIDR, c], '0/21']]
+      AvailabilityZone: !Select [2, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${parPrefixKeyword}-vpc-prv-c'
+        - Key: Purpose
+          Value: Private Subnet in second AZ (note that it doesn't necessarily resolve to AZ-b i.e. us-west-1c)
   resInternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
@@ -180,6 +204,11 @@ Resources:
     Properties:
       SubnetId: !Ref 'resSubnetPublicB'
       RouteTableId: !Ref 'resRouteTablePublic'
+  resRouteTableAssociationPublicC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'resSubnetPublicC'
+      RouteTableId: !Ref 'resRouteTablePublic'
   resRouteTableAssociationPrivateA:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
@@ -189,6 +218,12 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref 'resSubnetPrivateB'
+      RouteTableId: !Ref 'resRouteTablePrivateB'
+  #Using same route table as B to re-use NAT Gateway B instead of creating a new one
+  resRouteTableAssociationPrivateC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'resSubnetPrivateC'
       RouteTableId: !Ref 'resRouteTablePrivateB'
   resVPNSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -246,12 +281,29 @@ Resources:
       FromPort: '123'
       ToPort: '123'
       CidrIp: 0.0.0.0/0
-  resVPCDefaultSGEgressToSelf:
-    Type: AWS::EC2::SecurityGroupEgress
+  # resVPCDefaultSGEgressToSelf:
+    # Type: AWS::EC2::SecurityGroupEgress
+    # Properties:
+      # GroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+      # IpProtocol: '-1'
+      # DestinationSecurityGroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+
+  #SSM Parameters
+  resVpcIdParam:
+    Type: AWS::SSM::Parameter
     Properties:
-      GroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
-      IpProtocol: '-1'
-      DestinationSecurityGroupId: !GetAtt 'resVPC.DefaultSecurityGroup'
+      Name: !Sub "/${parPrefixKeyword}/infra/vpc/id"
+      Description: "VPC ID"
+      Type: String
+      Value: !Ref resVPC
+
+  resPublicSubnetIdsParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${parPrefixKeyword}/infra/vpc/subnets/public/all_ids"
+      Description: "List of All Public Subnet IDs"
+      Type: StringList
+      Value: !Join [",", [!Ref resSubnetPublicA, !Ref resSubnetPublicB, !Ref resSubnetPublicC]]
 
 Outputs:
   outVPCName:
@@ -279,6 +331,11 @@ Outputs:
     Value: !Ref 'resSubnetPublicB'
     Export:
       Name: !Sub '${parPrefixKeyword}-vpc-sub-pub-b'
+  outSubnetPublicC:
+    Description: ID of Public Subnet C
+    Value: !Ref 'resSubnetPublicC'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-sub-pub-c'
   outSubnetPrivateA:
     Description: ID of Private Subnet A
     Value: !Ref 'resSubnetPrivateA'
@@ -289,6 +346,11 @@ Outputs:
     Value: !Ref 'resSubnetPrivateB'
     Export:
       Name: !Sub '${parPrefixKeyword}-vpc-sub-prv-b'
+  outSubnetPrivateC:
+    Description: ID of Private Subnet C
+    Value: !Ref 'resSubnetPrivateC'
+    Export:
+      Name: !Sub '${parPrefixKeyword}-vpc-sub-prv-c'
   outManagementVPCSG:
     Description: ID of the Management Security Group Created
     Value: !Ref 'resVPNSecurityGroup'
