@@ -6,25 +6,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: v0.2.0 CloudFront Web Distributions for LifeShield Documentation
 Parameters:
-  parPodId:
-    Description: Pod domain name used as the key to query CMDB parameters
-    Type: String
-    Default: docs.icumed-lifeshield.com
-  parHostedZoneName:
-    Description: Hosted ZoneName for Stack
-    Type: String
-    Default: icumed-lifeshield.com
   parEnvironmentDNSDomain:
     Description: Environment DNS Domain for Stack
     Type: String
-    Default: icumed-lifeshield.com
-  parCloudFrontACMCertArn:
-    Description: ACM for cloud front endpoints
-    Type: AWS::SSM::Parameter::Value<String>
+    Default: docs.icumed-lifeshield.com
   parLogsBucket:
     Description: The S3 bucket where logs (such as FlowLogs and ELBs AccessLogs) are stored
-    Type: AWS::SSM::Parameter::Value<String>
-  # the format is "/<POD-DOMAIN>/infra/bootstrap/logs/bucket"
+    Type: String
+    Default: ""
   parLogsBucketFolder:
     Description: The prefix or subfolder within the bucket logs
     Type: String
@@ -34,7 +23,8 @@ Parameters:
     Type: String
     Default: PriceClass_All
   parCloudFrontWAFWebACLId:
-    Type: AWS::SSM::Parameter::Value<String>
+    Type: String
+    Default: ""
 
 Conditions:
   conEnableLogs: !Not [!Equals [!Ref parLogsBucket, '']]
@@ -60,10 +50,10 @@ Resources:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
       CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub 'Origin Access Identity for Pod ${parPodId}'
+        Comment: 'Origin Access Identity for LifeShield Docs'
 
-  # Dummy Empty Bucket
-  resDummyBucket:
+  # LifeShieldDocs Empty Bucket
+  resLifeShieldDocsBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
@@ -72,62 +62,48 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-  resDummyBucketPolicy:
+
+  resLifeShieldDocsBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref resDummyBucket
+      Bucket: !Ref resLifeShieldDocsBucket
       PolicyDocument:
         Statement:
-          - Sid: "Policy for CloudFront Origin Identity Access for CCP S3 UI Bucket"
+          - Sid: "Policy for CloudFront Origin Identity Access for LifeShield Docs Bucket"
             Action:
               - "s3:GetObject"
             Effect: "Allow"
-            Resource: !Sub 'arn:aws:s3:::${resDummyBucket}/*'
+            Resource: !Sub 'arn:aws:s3:::${resLifeShieldDocsBucket}/*'
             Principal:
               CanonicalUser: !GetAtt resBucketsOriginAccessIdentity.S3CanonicalUserId
           - Sid: BlockNonSSLRequests
             Effect: Deny
             Action: "s3:*"
             Principal: "*"
-            Resource: !Sub "arn:aws:s3:::${resDummyBucket}/*"
+            Resource: !Sub "arn:aws:s3:::${resLifeShieldDocsBucket}/*"
             Condition:
               Bool:
                 "aws:SecureTransport": "false"
-  resDummyBucketSSMParameter:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Description: SSM Parameter containing value of the initial dummy UI S3 bucket name and dns
-      Name: !Sub '/${parPodId}/infra/s3/ui/dummy'
-      Type: StringList
-      # NB: Must use the RegionalDomainName to avoid (307 Temporary Redirect) as it can take up to 24 hours for the bucket name to propagate across all AWS Regions
-      #     For more details see https://aws.amazon.com/premiumsupport/knowledge-center/s3-http-307-response/
-      Value: !Join [",",[!Ref resDummyBucket, !GetAtt resDummyBucket.RegionalDomainName]]
 
-  resCCPWebDistribution:
+  resLifeShieldDocsWebDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
-        Comment: !Sub "${parPodId} - CCP CloudFront Web Distribution"
+        Comment: "LifeShield Docs CloudFront Web Distribution"
         Origins:
           # NB: Must use the RegionalDomainName to avoid (307 Temporary Redirect) as it can take up to 24 hours for the bucket name to propagate across all AWS Regions
           #     For more details see https://aws.amazon.com/premiumsupport/knowledge-center/s3-http-307-response/
-          - DomainName: !GetAtt resDummyBucket.RegionalDomainName
-            Id: !Sub 'S3-ccp.${parEnvironmentDNSDomain}'
+          - DomainName: !GetAtt resLifeShieldDocsBucket.RegionalDomainName
+            Id: !Sub 'S3-${parEnvironmentDNSDomain}'
             S3OriginConfig:
               OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${resBucketsOriginAccessIdentity}"
         Aliases:
           - !Sub '${parEnvironmentDNSDomain}'
-          - !Sub 'ccp.${parEnvironmentDNSDomain}'
-          - !Sub 'www.${parEnvironmentDNSDomain}'
         DefaultCacheBehavior:
           AllowedMethods:
-            - DELETE
             - GET
             - HEAD
             - OPTIONS
-            - PATCH
-            - POST
-            - PUT
           CachedMethods:
             - GET
             - HEAD
@@ -141,7 +117,7 @@ Resources:
           MaxTTL: '60'
           MinTTL: '30'
           SmoothStreaming: 'false'
-          TargetOriginId: !Sub 'S3-ccp.${parEnvironmentDNSDomain}'
+          TargetOriginId: !Sub 'S3-${parEnvironmentDNSDomain}'
           ViewerProtocolPolicy: redirect-to-https
         CustomErrorResponses:
         - ErrorCode: '403'
@@ -168,10 +144,11 @@ Resources:
             IncludeCookies: 'true'
             Prefix: !If
               - conHasLogsBucketFolder
-              - !Sub "${parLogsBucketFolder}/ccp/"
-              - "ccp/"
+              - !Sub "${parLogsBucketFolder}/doc/"
+              - "doc/"
           - !Ref AWS::NoValue
-  resCCPDNSRecordSet:
+
+  resLifeShieldDocsDNSRecordSet:
     Type: AWS::Route53::RecordSet
     Properties:
       HostedZoneName: 'docs.icumed-lifeshield.com.'
@@ -180,77 +157,4 @@ Resources:
       Type: A
       AliasTarget:
         HostedZoneId: Z2FDTNDATAQYW2
-        DNSName: !GetAtt 'resCCPWebDistribution.DomainName'
-
-##############################################################################################################################################################
-# SSM Parameters
-##############################################################################################################################################################
-  resBucketsOriginAccessIdentityParam:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Description: UI Buckets Origin Access Identity
-      Name: !Sub '/${parPodId}/infra/cloudfront/oai'
-      Type: String
-      Value: !Ref resBucketsOriginAccessIdentity
-
-  resBucketsOriginAccessIdentityUserIdParam:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Description: UI Buckets Origin Access Identity S3 User Id
-      Name: !Sub '/${parPodId}/infra/cloudfront/oai/user-id'
-      Type: String
-      Value: !GetAtt resBucketsOriginAccessIdentity.S3CanonicalUserId
-
-  # distributions
-  resCCPWebDistributionParam:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: !Sub "/${parPodId}/infra/cloudfront/distribution/ccp"
-      Description: Cloudfront distribution for CCP
-      Type: String
-      Value: !Ref resCCPWebDistribution
-
-  # endpoints
-  resCCPWebUrlParam:
-    Type: AWS::SSM::Parameter
-    Properties:
-      Name: !Sub "/${parPodId}/infra/endpoints/ui/ccp"
-      Description: CCP Web URL
-      Type: String
-      Value: !Sub "https://${resCCPDNSRecordSet}"
-##############################################################################################################################################################
-
-Outputs:
-  outBucketsOriginAccessIdentity:
-    Description: UI Buckets Origin Access Identity
-    Value: !Ref resBucketsOriginAccessIdentity
-  outBucketsOriginAccessIdentityUserId:
-    Description: UI Buckets Origin Access Identity S3 User Id
-    Value: !GetAtt resBucketsOriginAccessIdentity.S3CanonicalUserId
-  outDummyBucketName:
-    Description: Empty Bucket used as NOP Origin for the Distributions
-    Value: !Ref resDummyBucket
-  outDummyBucketOrigin:
-    Description: Empty Bucket used as NOP Origin for the Distributions
-    # NB: Must use the RegionalDomainName to avoid (307 Temporary Redirect) as it can take up to 24 hours for the bucket name to propagate across all AWS Regions
-    #     For more details see https://aws.amazon.com/premiumsupport/knowledge-center/s3-http-307-response/
-    Value: !GetAtt resDummyBucket.RegionalDomainName
-  outCCPWebDistribution:
-    Description: Cloudfront distribution for CCP
-    Value: !Ref resCCPWebDistribution
-  outCCPWebUrl:
-    Description: CCP Web URL
-    Value: !Sub "https://${resCCPDNSRecordSet}"
-  # SSM params
-  outBucketsOriginAccessIdentityParam:
-    Description: SSM Parameter for UI Buckets Origin Access Identity
-    Value: !Ref resBucketsOriginAccessIdentityParam
-  outBucketsOriginAccessIdentityUserIdParam:
-    Description: SSM Parameter for UI Buckets Origin Access Identity S3 User Id
-    Value: !Ref resBucketsOriginAccessIdentityUserIdParam
-  outCCPWebDistributionParam:
-    Description: SSM Parameter for Cloudfront distribution for CCP
-    Value: !Ref resCCPWebDistributionParam
-  outCCPWebUrlParam:
-    Description: SSM Parameter for CCP Web URL
-    Value: !Ref resCCPWebUrlParam
+        DNSName: !GetAtt 'resLifeShieldDocsWebDistribution.DomainName'
