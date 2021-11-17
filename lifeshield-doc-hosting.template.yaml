@@ -2,6 +2,7 @@
 # This distributions are protected by a Web WAF.
 #
 # NOTE: Deploy this template on us-east-1 in order to ease with ACM certificate provisioning for the stack
+#       But also needs to be provisioned in us-east-1 due to WAF resources for CloudFront
 #
 AWSTemplateFormatVersion: '2010-09-09'
 Description: v0.2.0 CloudFront Web Distributions for LifeShield Documentation
@@ -22,18 +23,73 @@ Parameters:
     Description: Choosing the price class for cloudfront
     Type: String
     Default: PriceClass_All
-  parCloudFrontWAFWebACLId:
-    Type: String
-    Default: ""
 
 Conditions:
   conEnableLogs: !Not [!Equals [!Ref parLogsBucket, '']]
   conHasLogsBucketFolder: !And
   - !Condition conEnableLogs
   - !Not [!Equals [!Ref parLogsBucketFolder, ""]]
-  conDeployWaf: !Not [!Equals [!Ref parCloudFrontWAFWebACLId, '' ]]
 
 Resources:
+  resICUMedDataCentersIPSet:
+    Type: AWS::WAFv2::IPSet
+    Properties:
+      Addresses: 
+        # San Diego, CA
+        - 12.252.80.216/30
+        - 12.0.116.32/29
+        # San Diego, CA - Test Network
+        - 65.117.179.208/29
+        # Chennai, India
+        - 115.110.227.208/30
+        # Phoenix, AZ - Datacenter - GlobalProtect VPN
+        - 69.71.58.128/29
+        # Phoenix, AZ - Datacenter - GlobalProtect VPN
+        - 38.142.104.8/29
+        # Chicago, IL - Datacenter - GlobalProtect VPN
+        - 38.140.29.24/29
+        # Hong Kong - Datacenter - GlobalProtect VPN
+        - 63.217.237.160/30
+        # Slough, UK - Datacenter - GlobalProtect VPN
+        - 185.83.41.32/29
+      Description: IPSet of ICUMedical Datacenters for WAFv2
+      IPAddressVersion: IPV4
+      Name: 'IPSetICUMedicalDatacenters'
+      Scope: CLOUDFRONT
+      Tags: 
+        - Key: Name
+          Value: 'IPSET-ICUMedicalDatacenters'
+
+  resWAFv2WebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties: 
+      DefaultAction: 
+        Allow: {}
+      Description: WAFv2 Web ACL Rules
+      Name: 'LifeShield-Docs-Wafv2-WebACL'
+      Rules:
+        - Action:
+            Block: {}
+          Name: FilterRuleOnIPSet
+          Priority: 0
+          Statement:
+            NotStatement:
+              Statement:
+                IPSetReferenceStatement:
+                  Arn: !GetAtt resICUMedDataCentersIPSet.Arn
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: 'LifeShield-Docs-CloudFront-WAFv2-FilterRuleOnIPSet'
+            SampledRequestsEnabled: true
+      Scope: CLOUDFRONT
+      Tags: 
+        - Key: Name
+          Value: 'LifeShield Documentation WAFv2 Web ACL Rules'
+      VisibilityConfig: 
+        CloudWatchMetricsEnabled: true
+        MetricName: 'LifeShield-Docs-CloudFront-WAFv2-WebACL'
+        SampledRequestsEnabled: true
+
   resDocsIcumedLifeShieldCertificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
@@ -136,8 +192,7 @@ Resources:
           AcmCertificateArn: !Ref resDocsIcumedLifeShieldCertificate
           MinimumProtocolVersion: TLSv1.2_2019
           SslSupportMethod: sni-only
-        WebACLId:
-          !If [conDeployWaf , !Ref parCloudFrontWAFWebACLId, !Ref "AWS::NoValue" ]
+        WebACLId: !GetAtt resWAFv2WebACL.Arn
         Logging: !If
           - conEnableLogs
           - Bucket: !Sub '${parLogsBucket}.s3.amazonaws.com'
